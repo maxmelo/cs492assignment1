@@ -46,17 +46,21 @@ unsigned int fn(unsigned int n) {
 
 void* consumer(void *q) {
     //Consumer code
-
+    // gets an item from the queue
     pthread_mutex_lock(&consume_mutex);
     if(consumed < product_total){
 
+        // mutex lets us give one thread access to the queue
         pthread_mutex_lock(&produce_mutex);
+
+        // check if queue is empty
         while(queue.size() == 0){
             pthread_cond_wait(&notEmpty, &produce_mutex);
         }
         consumed++;
         pthread_mutex_unlock(&consume_mutex);
 
+        // signal that queue is not full
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&produce_mutex);
     }
