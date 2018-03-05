@@ -57,9 +57,6 @@ void* consumer(void *q) {
         consumed++;
         pthread_mutex_unlock(&consume_mutex);
 
-        Product *p = queue.front();
-        queue.pop();
-
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&produce_mutex);
     }
