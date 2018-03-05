@@ -21,17 +21,55 @@ int scheduling_algo;
 int quantum_value;
 int rand_seed;
 
+int consumed;
+
 int product_total;
 std::queue<product> queue;
 
 pthread_mutex_t produce_mutex;
+pthread_mutex_t consume_mutex;
+
+
 pthread_cond_t notFull, notEmpty;
 
+unsigned int fn(unsigned int n) {
+    if (n < 0) {
+        std::cerr << "Error: invalid input\n";
+    }
+    else if (n <= 1) {
+        return n;
+    }       
+    else {
+        return fn(n - 1) + fn(n - 2);
+    }
+}
 
 void* consumer(void *q) {
     //Consumer code
-    return nullptr;
+
+    pthread_mutex_lock(&consume_mutex);
+    if(consumed < product_total){
+
+        pthread_mutex_lock(&produce_mutex);
+        while(queue.size() == 0){
+            pthread_cond_wait(&notEmpty, &produce_mutex);
+        }
+        consumed++;
+        pthread_mutex_unlock(&consume_mutex);
+
+        Product *p = queue.front();
+        queue.pop();
+
+        pthread_cond_signal(&notFull);
+        pthread_mutex_unlock(&produce_mutex);
+    }
+    else{
+        pthread_mutex_unlock(&consume_mutex);
+        pthread_exit(NULL);
+    }
+
 }
+
 void* producer(void *q) {
     //Generate a new product
     std::srand(rand_seed);
@@ -42,14 +80,14 @@ void* producer(void *q) {
     pthread_mutex_lock(&produce_mutex);
 
     //Condition variable for full queue. This will need to get uncommented when the consumer code is done
-    /*while (queue.size() >= queue_size) {
+    while (queue.size() >= queue_size) {
         pthread_cond_wait(&notFull, &produce_mutex);
-    }*/
+    }
 
     queue.push(p);
     product_total++;
 
-    //pthread_cond_signal(&notEmpty);
+    pthread_cond_signal(&notEmpty);
 
     //Print product
     std::cout << "Product with ID " << p.id << " created at " << p.timestamp << std::endl;
