@@ -2,17 +2,14 @@
 NAME=assign1
 
 # List of all .cpp source code files included in your program (separated by spaces):
-SRC=main.cpp
-
-
+SRC=assign1.cpp
 
 SRCPATH=./
 OBJ=$(addprefix $(SRCPATH), $(SRC:.cpp=.o))
 
 RM=rm -f
 INCPATH=includes
-CPPFLAGS+= -I $(INCPATH)
-
+CPPFLAGS+= -I $(INCPATH) -g -O0
 
 all: $(OBJ)
 	g++ $(OBJ) -o $(NAME) -lpthread
