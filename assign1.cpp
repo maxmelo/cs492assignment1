@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
 
 
     //Parse command-line arguments
-    if (argc == 2) { producer_thread_number = atoi(argv[1]); } else { producer_thread_number = 4; }
+    if (argc >= 2) { producer_thread_number = atoi(argv[1]); } else { producer_thread_number = 4; }
     if (argc >= 3) { consumer_thread_number = atoi(argv[2]); } else { consumer_thread_number = 4; }
     if (argc >= 4) { product_limit = atoi(argv[3]); } else { product_limit = 30; }
     if (argc >= 5) { queue_size = atoi(argv[4]); } else { queue_size = 10; }
@@ -190,6 +190,8 @@ int main(int argc, char *argv[]) {
     //Generate producers and consumers based on the amount given in the command line arguments
     pthread_t** consumer_threads = new pthread_t*[consumer_thread_number];
     pthread_t** producer_threads = new pthread_t*[producer_thread_number];
+
+    start_time = clock();
 
     //Loop the number of times given in the commandline arguments and create consumer pthreads. Print error if the creation returns a non-zero error code.
     for (int i = 0; i < consumer_thread_number; i++) {
@@ -209,7 +211,6 @@ int main(int argc, char *argv[]) {
     pthread_cond_init(&notFull, NULL);
     pthread_cond_init(&notEmpty, NULL);
     
-    start_time = clock();
 
     //At end of calling function, wait for all threads to complete
     for (int i = 0; i < consumer_thread_number; i++) { pthread_join (*(consumer_threads[i]), (void**)(&retval)); }
@@ -242,13 +243,13 @@ int main(int argc, char *argv[]) {
 
     metrics_totaltime = clock() - start_time;
 
-    metrics_prodthru = produced_total / metrics_totaltime * 60;
-    metrics_consthru = consumed_total / metrics_totaltime * 60;
+    metrics_prodthru = produced_total / (metrics_totaltime / CLOCKS_PER_SEC * 60);
+    metrics_consthru = consumed_total / (metrics_totaltime / CLOCKS_PER_SEC * 60);
 
-    printf("Total time for processing all products: %f\n", metrics_totaltime);
-    printf("Turn around time    Min: %f   Max %f   Average %f\n", metrics_turnmin, metrics_turnmax, metrics_turnavg);
-    printf("Wait time    Min: %f   Max %f   Average %f\n", metrics_waitmin, metrics_waitmax, metrics_waitavg);
-    printf("Producer throughput: %f\n", metrics_prodthru);
-    printf("Consumer throughput: %f\n", metrics_consthru);
+    printf("Total time for processing all products: %f ticks\n", metrics_totaltime);
+    printf("Turn around time    Min: %f ticks   Max %f ticks   Average %f ticks\n", metrics_turnmin, metrics_turnmax, metrics_turnavg);
+    printf("Wait time    Min: %f ticks   Max %f ticks   Average %f ticks\n", metrics_waitmin, metrics_waitmax, metrics_waitavg);
+    printf("Producer throughput: %f/min\n", metrics_prodthru);
+    printf("Consumer throughput: %f/min\n", metrics_consthru);
     pthread_exit(0);
 }
