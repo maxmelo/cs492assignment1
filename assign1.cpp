@@ -5,10 +5,13 @@
 #include <iostream>
 #include <queue>
 #include <ctime>
+#include <vector>
+#include <map>
+#include <climits>
 
 struct product {
     int id;
-    std::time_t timestamp;
+    clock_t timestamp;
     int life;
 };
 
@@ -32,6 +35,12 @@ pthread_mutex_t queue_mutex;
 pthread_cond_t notFull, notEmpty;
 
 int rand_inc;
+
+clock_t start_time;
+std::map<int, clock_t> wait_map;
+
+std::vector<int> wait_times;
+std::vector<int> turn_times;
 
 //Fibonacci implementation to simulate consumption in consumer threads
 unsigned int fn(unsigned int n) {     
@@ -62,11 +71,13 @@ void* consumer(void *q) {
         if (scheduling_algo == 0) { //First-come first-serve scheduling
             p = queue.front();
             queue.pop();        
-            
+            wait_times.push_back(clock() - (wait_map.find(p.id)->second));
+
             //Simulate consumption
             for (int i = 0; i < p.life; i++) { fn(10); }
 
             std::cout << "Product with ID " << p.id << " consumed" << std::endl;
+            turn_times.push_back(clock() - p.timestamp);
 
             consumed_total++;
         } else if (scheduling_algo == 1) { //Round-robin scheduling
@@ -82,11 +93,14 @@ void* consumer(void *q) {
                 //Remove from the queue
                 queue.pop();
 
+                wait_times.push_back(clock() - (wait_map.find(p.id)->second));
+
                 //Simulate consumption "life" times
                 for (int i = 0; i < p.life; i++) { fn(10); }
 
                 //Console output for consumption
                 std::cout << "Product with ID " << p.id << " consumed" << std::endl;
+                turn_times.push_back(clock() - p.timestamp);
 
                 consumed_total++;
             }
@@ -110,10 +124,10 @@ void* producer(void *q) {
         //Mutex so only one thread can access the queue at once
         pthread_mutex_lock(&queue_mutex);
 
-        //Generate a new product with random life and timestamp in milliseconds from January 1st 1970
+        //Generate a new product with random life and timestamp in seconds since January 1st 1970
         std::srand(rand_seed + rand_inc);
         int rand_val = std::rand() % 1024;
-        struct product p = { .id = produced_total, .timestamp = std::time(nullptr), .life = rand_val };
+        struct product p = { .id = produced_total, .timestamp = clock(), .life = rand_val };
         rand_inc++;
 
         //Condition variable for full queue. This will need to get uncommented when the consumer code is done
@@ -123,13 +137,15 @@ void* producer(void *q) {
 
         //Push new product to queue and update our produced counter
         queue.push(p);
+        wait_map.insert(std::pair<int,clock_t>(p.id, clock()));
+
         produced_total++;
 
         pthread_cond_signal(&notEmpty);
 
         //Console output for production
-        std::cout << "Product with ID " << p.id << " created at " << p.timestamp << std::endl;
-        
+        std::cout << "Product with ID " << p.id << " produced at " << p.timestamp << std::endl;
+
         pthread_mutex_unlock(&queue_mutex);
 
         //Sleep thread for 100ms
@@ -143,6 +159,16 @@ int main(int argc, char *argv[]) {
     //pthread_t **producer_threads, **consumer_threads;
     int error, producer_count, consumer_count;
     int retval[1];
+    float metrics_totaltime, metrics_turnmax, metrics_turnmin, metrics_turnavg, metrics_waitmax, metrics_waitmin, metrics_waitavg, metrics_prodthru, metrics_consthru;
+
+    metrics_turnmax = std::numeric_limits<int>::min();
+    metrics_waitmax = std::numeric_limits<int>::min();
+    metrics_turnmin = std::numeric_limits<int>::max();
+    metrics_waitmin = std::numeric_limits<int>::max();
+    metrics_turnavg = 0;
+    metrics_waitavg = 0;
+    metrics_prodthru = 0;
+    metrics_consthru = 0;
 
     produced_total = 0;
     consumed_total = 0;
@@ -155,7 +181,7 @@ int main(int argc, char *argv[]) {
     //Parse command-line arguments
     if (argc == 2) { producer_thread_number = atoi(argv[1]); } else { producer_thread_number = 4; }
     if (argc >= 3) { consumer_thread_number = atoi(argv[2]); } else { consumer_thread_number = 4; }
-    if (argc >= 4) { product_limit = atoi(argv[3]); } else { product_limit = 100; }
+    if (argc >= 4) { product_limit = atoi(argv[3]); } else { product_limit = 30; }
     if (argc >= 5) { queue_size = atoi(argv[4]); } else { queue_size = 10; }
     if (argc >= 6) { scheduling_algo = atoi(argv[5]); } else { scheduling_algo = 1; }
     if (argc >= 7) { quantum_value = atoi(argv[6]); } else { quantum_value = 100; }
@@ -183,10 +209,46 @@ int main(int argc, char *argv[]) {
     pthread_cond_init(&notFull, NULL);
     pthread_cond_init(&notEmpty, NULL);
     
+    start_time = clock();
 
     //At end of calling function, wait for all threads to complete
     for (int i = 0; i < consumer_thread_number; i++) { pthread_join (*(consumer_threads[i]), (void**)(&retval)); }
     for (int i = 0; i < producer_thread_number; i++) { pthread_join (*(producer_threads[i]), (void**)(&retval)); }
 
+
+    /*
+        Time metrics calculations and printing
+    */
+
+    for(std::vector<int>::iterator it = turn_times.begin(); it != turn_times.end(); ++it) {
+        int value = *it;
+
+        if (value > metrics_turnmax) { metrics_turnmax = value; }
+        if (value < metrics_turnmin) { metrics_turnmin = value; }
+
+        metrics_turnavg += value;
+    }
+    metrics_turnavg /= turn_times.size();
+
+    for(std::vector<int>::iterator it = wait_times.begin(); it != wait_times.end(); ++it) {
+        int value = *it;
+
+        if (value > metrics_waitmax) { metrics_waitmax = value; }
+        if (value < metrics_waitmin) { metrics_waitmin = value; }
+
+        metrics_waitavg += value;
+    }
+    metrics_waitavg /= wait_times.size();
+
+    metrics_totaltime = clock() - start_time;
+
+    metrics_prodthru = produced_total / metrics_totaltime * 60;
+    metrics_consthru = consumed_total / metrics_totaltime * 60;
+
+    printf("Total time for processing all products: %f\n", metrics_totaltime);
+    printf("Turn around time    Min: %f   Max %f   Average %f\n", metrics_turnmin, metrics_turnmax, metrics_turnavg);
+    printf("Wait time    Min: %f   Max %f   Average %f\n", metrics_waitmin, metrics_waitmax, metrics_waitavg);
+    printf("Producer throughput: %f\n", metrics_prodthru);
+    printf("Consumer throughput: %f\n", metrics_consthru);
     pthread_exit(0);
 }
